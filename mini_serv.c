@@ -6,7 +6,7 @@
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 16:29:10 by artmende          #+#    #+#             */
-/*   Updated: 2022/11/30 17:58:28 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/01 12:06:20 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -24,6 +24,16 @@
 #include <netinet/in.h>
 
 #include <stdlib.h>
+#include <sys/select.h>
+
+
+typedef struct s_client
+{
+	int					zero_for_end; // if it's 0, its the last element of the array
+	int					id;
+	struct sockaddr_in	addr;
+}	t_client;
+
 
 int extract_message(char **buf, char **msg)
 {
@@ -72,6 +82,12 @@ char *str_join(char *buf, char *add)
 	return (newbuf);
 }
 
+t_client	*add_new_client(int listening_socket, int *client_id, t_client *old_array)
+{
+	t_client	*new_array;
+
+	//new_array = malloc(sizeof(t_client) * )
+}
 
 int main(int argc, char **argv)
 {
@@ -84,7 +100,12 @@ int main(int argc, char **argv)
 
 	int sockfd, connfd;
 	socklen_t	len;
-	struct sockaddr_in servaddr, cli; 
+	struct sockaddr_in servaddr, cli;
+
+	fd_set	read_set, write_set, save_set;
+
+	t_client	*client_array = calloc(1, sizeof(t_client)); // gonna put a special element in the array to know where is the end
+	int	next_client_id = 0;
 
 	// socket create and verification 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0); 
@@ -118,8 +139,23 @@ int main(int argc, char **argv)
 		exit(0); 
 	}
 
+	FD_SET(sockfd, &save_set);
+
 	while (1)
 	{
+		read_set = save_set;
+		write_set = save_set; // no need to remove the listening socket, because we will check the client list only
+		if (select(FD_SETSIZE + 1, &read_set, &write_set, NULL, NULL) == -1)
+		{
+			// some error
+		}
+
+		if (FD_ISSET(sockfd, &read_set))
+		{
+			// call accept and add the client to the list
+		}
+
+
 		// save a copy of read set and write set
 		// select()
 		// check if listening socket has been selected
