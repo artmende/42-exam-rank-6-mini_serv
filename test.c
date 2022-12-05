@@ -6,7 +6,7 @@
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/12/01 15:09:56 by artmende          #+#    #+#             */
-/*   Updated: 2022/12/01 17:02:09 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/05 15:45:21 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -78,6 +78,10 @@ int	main()
 			//fcntl(client_sock, F_SETFL, O_NONBLOCK); //////////////////////////////
 			FD_SET(client_sock, &save_set);
 			continue;
+		}
+		if (FD_ISSET(5645646, &read_set)) // no error when checking random fd
+		{
+			printf("yop je suis la");
 		}
 		if (client_sock > 0 && FD_ISSET(client_sock, &read_set))
 		{
