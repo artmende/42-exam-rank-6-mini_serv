@@ -6,7 +6,7 @@
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 16:29:10 by artmende          #+#    #+#             */
-/*   Updated: 2022/12/06 12:36:44 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/06 18:10:16 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -27,6 +27,8 @@
 #include <sys/select.h>
 #include <stdio.h>
 
+#include <signal.h>
+
 
 typedef struct s_client
 {
@@ -46,11 +48,12 @@ typedef struct s_server
 	fd_set				save_set;
 }	t_server;
 
-void	fatal_error()
+int	fatal_error()
 {
 	char	*msg = "Fatal error\n";
 	write(2, msg, strlen(msg));
 	exit(1);
+	return (1);
 }
 
 int extract_message(char **buf, char **msg)
@@ -101,6 +104,7 @@ char *str_join(char *buf, char *add)
 }
 
 
+
 void	setup_server(t_server *server, int port)
 {
 	if (server == NULL)
@@ -127,7 +131,7 @@ void	setup_server(t_server *server, int port)
 	FD_SET(server->listening_socket, &server->save_set);
 }
 
-void	*add_client(t_server *server)
+void	add_client_and_announce(t_server *server, fd_set write_set)
 {
 	t_client	*new_client = calloc(1, sizeof(t_client));
 	if (new_client == NULL)
@@ -139,44 +143,80 @@ void	*add_client(t_server *server)
 	if (new_client->sock < 0)
 		fatal_error();
 	FD_SET(new_client->sock, &server->save_set);
-	// add_back the new client (and announce to all others)
 
-	if (server->client_list != NULL)
+	char buf[42];
+	sprintf(buf, "server: client %d just arrived\n", new_client->id);
+	// add_front
+	new_client->next = server->client_list;
+	server->client_list = new_client;
+	t_client *browse = new_client->next;
+	while (browse)
 	{
-		char	buf[42];
-		sprintf(buf, "server: client %d just arrived\n", new_client->id);
-	}
-	// use add_front, then browse the rest of the list to announce
-	// need to have the write set available here
-
-	if (current_list == NULL)
-		return (new_client);
-	else
-	{
-		char	buf[42];
-		sprintf(buf, "server: client %d just arrived\n", new_client->id);
-		t_client	*browse = current_list;
-		while (browse->next)
-		{
-			if (FD_ISSET(browse->sock, &write_set))
-				write(browse->sock, buf, strlen(buf));
-			browse = browse->next;
-		}
 		if (FD_ISSET(browse->sock, &write_set))
 			write(browse->sock, buf, strlen(buf));
-		browse->next = new_client;
-		return (current_list);
+		browse = browse->next;
 	}
 }
 
-void	dispatch_message_from_client(t_client **browser, t_client **list, int *skip_increment) // need to access the save_set too to remove clients
+void	dispatch_message_from_client(t_client **client_browser, t_server *server, int *skip_increment, fd_set write_set) // need to access the save_set too to remove clients
 {
-	
+	char	buf[10000];
+	int		read_return = read((*client_browser)->sock, buf, 9999);
+	if (read_return == 0)
+	{
+		// remove client and skip increment
+		t_client	*to_delete = *client_browser;
+		*client_browser = to_delete->next;
+		*skip_increment = 1;
+		if (server->client_list == to_delete) // deleting first node of the list
+			server->client_list = to_delete->next;
+		else
+		{
+			t_client	*parent_of_to_delete = server->client_list;
+			while (parent_of_to_delete && parent_of_to_delete->next != to_delete)
+				parent_of_to_delete = parent_of_to_delete->next;
+			parent_of_to_delete->next = to_delete->next;
+		}
+		sprintf(buf, "server: client %d just left\n", to_delete->id);
+		t_client	*to_write = server->client_list;
+		while (to_write)
+		{
+			if (FD_ISSET(to_write->sock, &write_set))
+				write(to_write->sock, buf, strlen(buf));
+			to_write = to_write->next;
+		}
+		close(to_delete->sock);
+		FD_CLR(to_delete->sock, &server->save_set);
+		free(to_delete);
+	}
+	else
+	{
+		buf[read_return] = 0;
+		char	buf2[11000];
+		int length = sprintf(buf2, "client %d: %s", (*client_browser)->id, buf);
+		t_client	*to_write = server->client_list;
+		while (to_write)
+		{
+			if (to_write->id != (*client_browser)->id && FD_ISSET(to_write->sock, &write_set))
+				write(to_write->sock, buf2, length);
+			to_write = to_write->next;
+		}
+	}
 }
 
+void	handler(int	i)
+{
+	(void)i;
+	printf("inside handler\n");
+	system("leaks a.out");
+	exit(1);
+}
 
 int main(int argc, char **argv)
 {
+
+	signal(SIGUSR1, handler);
+
 	if (argc != 2)
 	{
 		write(1, "wrong number of arguments\n", 26);
@@ -191,23 +231,21 @@ int main(int argc, char **argv)
 	{
 		fd_set	read_set = mini_serv.save_set;
 		fd_set	write_set = mini_serv.save_set; // no need to remove the listening socket, because we will check the client list only
-		if (select(FD_SETSIZE + 1, &read_set, &write_set, NULL, NULL) == -1)
-			fatal_error();
+		if (select(FD_SETSIZE, &read_set, &write_set, NULL, NULL) == -1)
+			write(1, "select\n", 7) && fatal_error();
 
 		if (FD_ISSET(mini_serv.listening_socket, &read_set))
-			add_client(&mini_serv); // accept the new client, add it to save_set, annouce to all others and then add to the list
+			add_client_and_announce(&mini_serv, write_set); // accept the new client, add it to save_set, annouce to all others and then add to the list
 
-		t_client	*client_browser = client_list;
+		t_client	*client_browser = mini_serv.client_list;
 		while (client_browser)
 		{
 			int	skip_increment = 0;
 			if (FD_ISSET(client_browser->sock, &read_set))
-				dispatch_message_from_client(&client_browser, &client_list, &skip_increment); // read the message and send it to all other clients from the list. If message has length 0, we remove the client from the list and notify all others that he left
+				dispatch_message_from_client(&client_browser, &mini_serv, &skip_increment, write_set); // read the message and send it to all other clients from the list. If message has length 0, we remove the client from the list and notify all others that he left
 			if (skip_increment == 0) // if a client was removed, we should not increment, the browser will already point to the next client (or to NULL)
 				client_browser = client_browser->next;
 		}
 	}
+	return (0);
 }
-
-// make the client list part of the server struct. We can pass the server struct to all the functions, and it can always access everything
-
