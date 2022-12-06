@@ -6,7 +6,7 @@
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 16:29:10 by artmende          #+#    #+#             */
-/*   Updated: 2022/12/05 17:54:14 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/06 12:36:44 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -41,8 +41,9 @@ typedef struct s_server
 {
 	int					listening_socket;
 	struct sockaddr_in	addr;
-	fd_set				save_set;
 	int					next_client_id;
+	t_client			*client_list;
+	fd_set				save_set;
 }	t_server;
 
 void	fatal_error()
@@ -105,6 +106,7 @@ void	setup_server(t_server *server, int port)
 	if (server == NULL)
 		fatal_error();
 	server->next_client_id = 0;
+	server->client_list = NULL;
 	FD_ZERO(&server->save_set);
 	// socket create and verification
 	if (-1 == (server->listening_socket = socket(AF_INET, SOCK_STREAM, 0)))
@@ -125,7 +127,7 @@ void	setup_server(t_server *server, int port)
 	FD_SET(server->listening_socket, &server->save_set);
 }
 
-t_client	*add_client(t_client *current_list, t_server *server, fd_set write_set)
+void	*add_client(t_server *server)
 {
 	t_client	*new_client = calloc(1, sizeof(t_client));
 	if (new_client == NULL)
@@ -138,6 +140,15 @@ t_client	*add_client(t_client *current_list, t_server *server, fd_set write_set)
 		fatal_error();
 	FD_SET(new_client->sock, &server->save_set);
 	// add_back the new client (and announce to all others)
+
+	if (server->client_list != NULL)
+	{
+		char	buf[42];
+		sprintf(buf, "server: client %d just arrived\n", new_client->id);
+	}
+	// use add_front, then browse the rest of the list to announce
+	// need to have the write set available here
+
 	if (current_list == NULL)
 		return (new_client);
 	else
@@ -173,7 +184,6 @@ int main(int argc, char **argv)
 	}
 
 	t_server	mini_serv;
-	t_client	*client_list = NULL;
 
 	setup_server(&mini_serv, atoi(argv[1]));
 
@@ -185,7 +195,7 @@ int main(int argc, char **argv)
 			fatal_error();
 
 		if (FD_ISSET(mini_serv.listening_socket, &read_set))
-			client_list = add_client(client_list, &mini_serv, write_set); // accept the new client, add it to save_set, annouce to all others and then add to the list
+			add_client(&mini_serv); // accept the new client, add it to save_set, annouce to all others and then add to the list
 
 		t_client	*client_browser = client_list;
 		while (client_browser)
