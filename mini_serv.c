@@ -6,7 +6,7 @@
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 16:29:10 by artmende          #+#    #+#             */
-/*   Updated: 2022/12/06 18:10:16 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/07 16:36:12 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -160,8 +160,12 @@ void	add_client_and_announce(t_server *server, fd_set write_set)
 
 void	dispatch_message_from_client(t_client **client_browser, t_server *server, int *skip_increment, fd_set write_set) // need to access the save_set too to remove clients
 {
-	char	buf[10000];
-	int		read_return = read((*client_browser)->sock, buf, 9999);
+	//char	buf[10000];
+	char	*read_buf = calloc(1, sizeof(char) * 10000);
+	if (read_buf == NULL)
+		fatal_error();
+	char	*read_buf_save = read_buf;
+	int		read_return = read((*client_browser)->sock, read_buf, 9999);
 	if (read_return == 0)
 	{
 		// remove client and skip increment
@@ -177,12 +181,12 @@ void	dispatch_message_from_client(t_client **client_browser, t_server *server, i
 				parent_of_to_delete = parent_of_to_delete->next;
 			parent_of_to_delete->next = to_delete->next;
 		}
-		sprintf(buf, "server: client %d just left\n", to_delete->id);
+		sprintf(read_buf, "server: client %d just left\n", to_delete->id);
 		t_client	*to_write = server->client_list;
 		while (to_write)
 		{
 			if (FD_ISSET(to_write->sock, &write_set))
-				write(to_write->sock, buf, strlen(buf));
+				write(to_write->sock, read_buf, strlen(read_buf));
 			to_write = to_write->next;
 		}
 		close(to_delete->sock);
@@ -191,17 +195,29 @@ void	dispatch_message_from_client(t_client **client_browser, t_server *server, i
 	}
 	else
 	{
-		buf[read_return] = 0;
-		char	buf2[11000];
-		int length = sprintf(buf2, "client %d: %s", (*client_browser)->id, buf);
+		char	*write_buf = NULL;
+		char	client_nbr_str[25];
+		char	*msg = NULL;
+		bzero(client_nbr_str, sizeof(client_nbr_str));
+		sprintf(client_nbr_str, "client %d: ", (*client_browser)->id);
+		while (extract_message(&read_buf, &msg))
+		{
+			write_buf = str_join(write_buf, client_nbr_str);
+			write_buf = str_join(write_buf, msg);
+			free(msg);
+		}
+		//char	buf2[11000];
+
+		//int length = sprintf(buf2, "client %d: %s", (*client_browser)->id, buf);
 		t_client	*to_write = server->client_list;
 		while (to_write)
 		{
 			if (to_write->id != (*client_browser)->id && FD_ISSET(to_write->sock, &write_set))
-				write(to_write->sock, buf2, length);
+				write(to_write->sock, write_buf, strlen(write_buf));
 			to_write = to_write->next;
 		}
 	}
+	free(read_buf_save);
 }
 
 void	handler(int	i)
@@ -211,6 +227,39 @@ void	handler(int	i)
 	system("leaks a.out");
 	exit(1);
 }
+
+
+//int	main()
+//{
+
+//	signal(SIGUSR1, handler);
+//	char	*buf1 = malloc(sizeof(char) * 10000);
+//	char	*buf1_sav = buf1;
+//	//char	buf1[10000];
+//	char	*buf2 = NULL;
+//	char	*buf3;
+
+//	int	read_return = read(0, buf1, 9999);
+//	buf1[read_return] = 0;
+
+//	while (extract_message(&buf1, &buf2))
+//	{
+//		buf3 = str_join(buf3, "client 4 : ");
+//		buf3 = str_join(buf3, buf2);
+//		free(buf2);
+//	}
+
+//	printf("Down here is received data:\n-----\n%s\n-----\n", buf3);
+
+//	free(buf1_sav);
+
+//	printf("buf1 : %p\nbuf1_sav : %p\n", buf1, buf1_sav);
+
+//	while (1) {}
+
+//	return 0;
+//}
+
 
 int main(int argc, char **argv)
 {
