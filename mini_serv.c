@@ -6,7 +6,7 @@
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 16:29:10 by artmende          #+#    #+#             */
-/*   Updated: 2022/12/07 16:36:12 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/07 21:00:51 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -161,11 +161,15 @@ void	add_client_and_announce(t_server *server, fd_set write_set)
 void	dispatch_message_from_client(t_client **client_browser, t_server *server, int *skip_increment, fd_set write_set) // need to access the save_set too to remove clients
 {
 	//char	buf[10000];
-	char	*read_buf = calloc(1, sizeof(char) * 10000);
+	char	*read_buf = calloc(1, sizeof(char) * 10);
 	if (read_buf == NULL)
 		fatal_error();
 	char	*read_buf_save = read_buf;
-	int		read_return = read((*client_browser)->sock, read_buf, 9999);
+	int		read_return = read((*client_browser)->sock, read_buf, 9);
+	if (strchr(read_buf, '\n'))
+	{
+		printf("have nl in here\n");
+	}
 	if (read_return == 0)
 	{
 		// remove client and skip increment
@@ -200,15 +204,26 @@ void	dispatch_message_from_client(t_client **client_browser, t_server *server, i
 		char	*msg = NULL;
 		bzero(client_nbr_str, sizeof(client_nbr_str));
 		sprintf(client_nbr_str, "client %d: ", (*client_browser)->id);
-		while (extract_message(&read_buf, &msg))
-		{
-			write_buf = str_join(write_buf, client_nbr_str);
-			write_buf = str_join(write_buf, msg);
-			free(msg);
-		}
-		//char	buf2[11000];
 
-		//int length = sprintf(buf2, "client %d: %s", (*client_browser)->id, buf);
+
+
+		//int	have_nl = 0;
+		//while (extract_message(&read_buf, &msg) && ++have_nl)
+		//{
+		//	printf("inside\n");
+		//	write_buf = str_join(write_buf, client_nbr_str);
+		//	write_buf = str_join(write_buf, msg);
+		//	free(msg);
+		//	printf("inside end\n");
+		//}
+		//if (have_nl == 0)
+		//	write_buf = read_buf;
+
+
+	write_buf = str_join(write_buf, client_nbr_str);
+	write_buf = str_join(write_buf, read_buf);
+
+
 		t_client	*to_write = server->client_list;
 		while (to_write)
 		{
@@ -217,7 +232,9 @@ void	dispatch_message_from_client(t_client **client_browser, t_server *server, i
 			to_write = to_write->next;
 		}
 	}
+	printf("coucou\n");
 	free(read_buf_save);
+	printf("yop\n");
 }
 
 void	handler(int	i)
