@@ -6,9 +6,31 @@
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/12/09 16:22:21 by artmende          #+#    #+#             */
-/*   Updated: 2022/12/09 20:02:07 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/18 15:27:58 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
+
+/*
+	setup_server() creates the listening socket and initialize all variables in the server struct
+	add_client() accepts and sets up the new client and announces its arrival to all others
+	dispatch_msg() tries to read from the client, and sends its messages to all others. If the client left, it is removed from the client list
+
+	extract_message()	is a function provided by the exam subject.
+						It looks for a \n in the string passed as first argument.
+						If there is none, it returns 0 and leaves the string untouched.
+						If there is a \n, it copies whatever is after it and reassign the first arg to point to that copy.
+						It then makes the second argument point to the original string and adds a \0 to it to make it stop at the first \n
+						Look at how the function is used down below.
+						The second arg must be freed INSIDE the while scope. The first arg must be freed only once, at the very end (its done when removing the client in my case)
+						Both args must be freeable pointers
+
+	Note :	A message is defined as a string ending with \n. If there are several \n in a string, that makes several messages.
+			If there is no \n in a string, it is considered that the message is not complete.
+			That string (with no \n) is saved in (t_client::buf), and only if after reading some more, a \n is found, is it then considered a complete message and sent to other clients.
+			If a client sends a string without \n and then leaves, the "in waiting" string in (t_client::buf) is deleted, and never sent to the other clients.
+			That can be tested with something like : echo -n "some string with no new line" | nc localhost PORT
+			In the 42 exam session, use /bin/echo instead of the normal echo command.
+*/
 
 #include <errno.h>
 #include <string.h>
@@ -25,10 +47,10 @@ typedef struct s_client
 {
 	int					id;
 	char				id_str[25];
-	int					sock;
+	int					sock; // don't forget to close it when removing client
 	struct sockaddr_in	addr;
 	socklen_t			addr_len;
-	char				*buf;
+	char				*buf; // set to NULL when client is added, and deallocated with free() when client is removed
 	struct s_client		*next;
 }	t_client;
 
@@ -38,7 +60,7 @@ typedef struct s_server
 	struct sockaddr_in	addr;
 	t_client			*client_list;
 	int					id_next_client;
-	fd_set				save_set, read_set, write_set;
+	fd_set				save_set, read_set, write_set; // don't forget to use FD_CLR() when removing a client
 }	t_server;
 
 void	fatal()
@@ -101,7 +123,7 @@ void	add_client(t_server *server)
 	t_client	*browse = c->next;
 	while (browse)
 	{
-		if (FD_ISSET(browse->sock, &server->write_set))
+		if (FD_ISSET(browse->sock, &server->write_set)) // This cannot evaluate as true for the new client, as it has not gotten a chance to go through select() yet
 			send(browse->sock, welcome_msg, strlen(welcome_msg), 0);
 		browse = browse->next;
 	}
@@ -212,7 +234,6 @@ void	dispatch_msg(t_client **client, t_server *server, int *skip_increment)
 				send(browse->sock, goodbye_msg, strlen(goodbye_msg), 0);
 			browse = browse->next;
 		}
-
 		free(to_delete);
 	}
 }
@@ -247,8 +268,6 @@ int	main(int argc, char **argv)
 			if (skip_increment == 0) // if we delete the node in the list, we have to increment the pointer in dispatch_msg and skip here
 				browse = browse->next;
 		}
-
 	}
-
 	return 0;
 }
