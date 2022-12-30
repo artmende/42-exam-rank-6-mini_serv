@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   second_try.c                                       :+:      :+:    :+:   */
+/*   final_version.c                                    :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: artmende <artmende@student.s19.be>         +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/12/09 16:22:21 by artmende          #+#    #+#             */
-/*   Updated: 2022/12/18 15:27:58 by artmende         ###   ########.fr       */
+/*   Updated: 2022/12/30 13:28:30 by artmende         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -92,7 +92,7 @@ void	setup_server(t_server *s, int port)
 		fatal();
 
 	// Listening
-	if (0 != listen(s->sock, 128))
+	if (0 != listen(s->sock, SOMAXCONN))
 		fatal();
 
 	FD_SET(s->sock, &s->save_set);
@@ -104,15 +104,19 @@ void	add_client(t_server *server)
 	t_client	*c = calloc(1, sizeof(t_client));
 	if (c == NULL)
 		fatal();
-	c->id = server->id_next_client;
-	sprintf(c->id_str, "client %d: ", c->id);
-	server->id_next_client = server->id_next_client + 1;
 	c->addr_len = sizeof(struct sockaddr_in);
 	c->sock = accept(server->sock, (struct sockaddr *)&c->addr, &c->addr_len);
 	if (c->sock < 0)
-		fatal();
+	{
+		write(2, "error with accept()\n", 20);
+		free(c);
+		return;
+	}
 	FD_SET(c->sock, &server->save_set);
-	
+	c->id = server->id_next_client;
+	sprintf(c->id_str, "client %d: ", c->id);
+	server->id_next_client = server->id_next_client + 1;
+
 	// adding the client to client list (add front)
 	c->next = server->client_list;
 	server->client_list = c;
@@ -202,7 +206,10 @@ void	dispatch_msg(t_client **client, t_server *server, int *skip_increment)
 		}
 		free(to_send);
 	}
-
+	//else if (recv_return == -1)
+	//{
+	//	write(2, "recv = -1\n", 10);
+	//}
 	else //if (recv_return <= 0) // if error (-1), we remove the client too
 	{
 		t_client	*to_delete = (*client);
@@ -255,8 +262,11 @@ int	main(int argc, char **argv)
 		server.read_set = server.save_set;
 		server.write_set = server.save_set;
 
-		if (-1 == select(server.id_next_client + 5, &server.read_set, &server.write_set, NULL, NULL))
-			fatal();
+		if (-1 == select(FD_SETSIZE, &server.read_set, &server.write_set, NULL, NULL))
+		{
+			//write(2, "error with select\n", 18);
+			continue;
+		}
 		if (FD_ISSET(server.sock, &server.read_set))
 			add_client(&server);
 		t_client	*browse = server.client_list;
